@@ -4,18 +4,11 @@ Amazon BULK 批量生成工具 - PyInstaller打包配置
 支持跨平台构建: macOS (.app) 和 Windows (.exe)
 """
 
-import sys
-import os
-from pathlib import Path
-
 block_cipher = None
 
-project_dir = Path(SPECPATH)
-entry_script = project_dir / 'bulk_creator.py'
-
 a = Analysis(
-    str(entry_script),
-    pathex=[str(project_dir)],
+    ['bulk_creator.py'],
+    pathex=[],
     binaries=[],
     datas=[],
     hiddenimports=[
