@@ -39,14 +39,14 @@ jobs:
 
     - name: Upload artifact (Windows)
       if: matrix.os == 'windows-latest'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: payment-windows
         path: dist/payment.exe
 
     - name: Upload artifact (macOS)
       if: matrix.os == 'macos-latest'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: payment-macos
         path: dist/payment
@@ -62,13 +62,13 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Download Windows artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: payment-windows
         path: ./artifacts/windows
 
     - name: Download macOS artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: payment-macos
         path: ./artifacts/macos
