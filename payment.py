@@ -47,6 +47,37 @@ def 修复乱码字符串(s):
         return s
 
 
+def find_column(df, target_name, logger=None):
+    """
+    智能查找DataFrame中的列名（不区分大小写、去除空格）
+    
+    参数:
+        df: 输入的DataFrame
+        target_name: 目标列名
+        logger: 日志记录器（可选）
+    
+    返回:
+        str: 实际的列名，如果找不到则返回None
+    """
+    if target_name in df.columns:
+        return target_name
+    
+    target_lower = target_name.lower().strip()
+    
+    for col in df.columns:
+        col_lower = col.lower().strip()
+        if col_lower == target_lower:
+            if logger:
+                logger.info(f"列名映射: '{target_name}' -> '{col}'")
+            return col
+    
+    if logger:
+        logger.warning(f"未找到列: '{target_name}'")
+        logger.info(f"可用列: {list(df.columns)}")
+    
+    return None
+
+
 # ==================== Excel工具函数模块 ====================
 
 def ifs(df, *args, default=np.nan):
@@ -923,16 +954,25 @@ class PaymentProcessor:
         try:
             print("\n📅 处理日期数据...")
             
-            df['date/time'] = df['date/time'].str.split(' ').str[:3].str.join(' ')
-            df['date/time'] = pd.to_datetime(
-                df['date/time'],
+            date_col = find_column(df, 'date/time', self.logger)
+            
+            if date_col is None:
+                error_msg = "未找到 'date/time' 列，请检查数据文件是否包含日期时间列"
+                print(f"❌ {error_msg}")
+                print(f"💡 可用列: {list(df.columns)}")
+                self.logger.error(error_msg)
+                raise KeyError(error_msg)
+            
+            df[date_col] = df[date_col].str.split(' ').str[:3].str.join(' ')
+            df[date_col] = pd.to_datetime(
+                df[date_col],
                 format='%b %d, %Y',
                 errors='coerce'
             )
             
-            df['年'] = df['date/time'].dt.year
-            df['月'] = df['date/time'].dt.month
-            df['日'] = df['date/time'].dt.day
+            df['年'] = df[date_col].dt.year
+            df['月'] = df[date_col].dt.month
+            df['日'] = df[date_col].dt.day
             
             self.logger.info("日期转换完成")
             print("✅ 日期转换完成")
@@ -948,14 +988,20 @@ class PaymentProcessor:
         try:
             print("\n📊 划分数据维度...")
             
-            数据维度条件1 = df['sku'].isna()
-            数据维度条件2 = df['sku'].notna()
+            sku_col = find_column(df, 'sku', self.logger)
             
-            df['数据维度'] = ifs(
-                df,
-                数据维度条件1, '店铺维度',
-                数据维度条件2, '商品维度',
-            )
+            if sku_col is None:
+                print("⚠️ 未找到 'sku' 列，将所有数据标记为店铺维度")
+                df['数据维度'] = '店铺维度'
+            else:
+                数据维度条件1 = df[sku_col].isna()
+                数据维度条件2 = df[sku_col].notna()
+                
+                df['数据维度'] = ifs(
+                    df,
+                    数据维度条件1, '店铺维度',
+                    数据维度条件2, '商品维度',
+                )
             
             self.logger.info(f"数据维度划分完成: {df['数据维度'].unique()}")
             print(f"✅ 数据维度划分完成: {df['数据维度'].unique()}")
@@ -998,8 +1044,14 @@ class PaymentProcessor:
                     print(f"  {w}")
             
             # ===== 执行业务逻辑归因 =====
-            df['type'] = df['type'].fillna('优惠券/秒杀')
-            df.loc[df['description'].str.contains('Coupon Redemption', na=False), 'description'] = 'Coupon Redemption Fee'
+            type_col = find_column(df, 'type', self.logger)
+            desc_col = find_column(df, 'description', self.logger)
+            
+            if type_col:
+                df[type_col] = df[type_col].fillna('优惠券/秒杀')
+            
+            if desc_col and type_col:
+                df.loc[df[desc_col].str.contains('Coupon Redemption', na=False), desc_col] = 'Coupon Redemption Fee'
             
             df['销量'] = ifs(df, df['type'] == 'Order', df[cols['quantity']], default=0)
             df['退货量'] = ifs(df, df['type'] == 'Refund', df[cols['quantity']], default=0)
