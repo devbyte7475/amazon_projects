@@ -1,0 +1,97 @@
+name: Build Payment Tool
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        python-version: ['3.9']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller payment.spec
+
+    - name: Upload artifact (Windows)
+      if: matrix.os == 'windows-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: payment-windows
+        path: dist/payment.exe
+
+    - name: Upload artifact (macOS)
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: payment-macos
+        path: dist/payment
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Download Windows artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: payment-windows
+        path: ./artifacts/windows
+
+    - name: Download macOS artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: payment-macos
+        path: ./artifacts/macos
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          ./artifacts/windows/payment.exe
+          ./artifacts/macos/payment
+        body: |
+          ## Amazon Payment 数据处理工具
+          
+          ### 使用方法
+          1. 下载对应平台的可执行文件
+          2. Windows: 双击运行 `payment.exe`
+          3. macOS: 在终端中运行 `./payment`
+          
+          ### 功能特性
+          - 支持拖放文件夹操作
+          - 自动合并 Excel 和 CSV 文件
+          - 智能数据类型转换
+          - 业务指标自动计算
+          - 完整的日志记录
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
