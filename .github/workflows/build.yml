@@ -1,0 +1,142 @@
+name: 统一打包所有子项目
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  detect-projects:
+    runs-on: ubuntu-latest
+    outputs:
+      projects: ${{ steps.detect.outputs.projects }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 动态检测子项目
+        id: detect
+        run: |
+          projects_json="["
+          first=true
+          for dir in */; do
+            dir="${dir%/}"
+            [ -f "$dir/requirements.txt" ] || continue
+            entry_point=""
+            if [ -f "$dir/build.spec" ]; then
+              entry_point="build.spec"
+            elif [ -f "$dir/$dir.spec" ]; then
+              entry_point="$dir.spec"
+            elif ls "$dir"/*.spec 1>/dev/null 2>&1; then
+              entry_point=$(ls "$dir"/*.spec | head -1 | xargs basename)
+            elif [ -f "$dir/main.py" ]; then
+              entry_point="main.py"
+            elif [ -f "$dir/$dir.py" ]; then
+              entry_point="$dir.py"
+            elif ls "$dir"/src/main.py 1>/dev/null 2>&1; then
+              entry_point="src/main.py"
+            else
+              continue
+            fi
+            if [ "$first" = true ]; then
+              first=false
+            else
+              projects_json+=","
+            fi
+            projects_json+="{\"name\":\"$dir\",\"entry\":\"$entry_point\"}"
+            echo "检测到子项目: $dir (入口: $entry_point)"
+          done
+          projects_json+="]"
+          echo "projects=$projects_json" >> "$GITHUB_OUTPUT"
+          echo "项目列表: $projects_json"
+
+  build:
+    needs: detect-projects
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJson(needs.detect-projects.outputs.projects) }}
+        os: [windows-latest, macos-latest]
+        python-version: ['3.11']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: 安装依赖
+        working-directory: ${{ matrix.project.name }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: 打包 (spec文件)
+        if: endsWith(matrix.project.entry, '.spec')
+        working-directory: ${{ matrix.project.name }}
+        run: pyinstaller ${{ matrix.project.entry }} --clean
+
+      - name: 打包 (Python入口)
+        if: "!endsWith(matrix.project.entry, '.spec')"
+        working-directory: ${{ matrix.project.name }}
+        run: pyinstaller --onefile --console -n ${{ matrix.project.name }} ${{ matrix.project.entry }}
+
+      - name: 上传构建产物 (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.project.name }}-windows
+          path: ${{ matrix.project.name }}/dist/*
+          retention-days: 30
+
+      - name: 上传构建产物 (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.project.name }}-macos
+          path: ${{ matrix.project.name }}/dist/*
+          retention-days: 30
+
+  release:
+    needs: [detect-projects, build]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: 列出产物
+        run: find ./artifacts -type f | sort
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./artifacts/**/*
+          body: |
+            # Amazon Projects 统一发布
+
+            ## 包含工具
+            - **bulk_processor** - Amazon广告Bulk数据处理工具
+            - **payment** - Amazon Payment数据处理工具
+            - **bulk_creator** - Amazon BULK批量生成工具
+
+            ## 下载说明
+            选择对应平台和工具的压缩包下载即可使用。
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
