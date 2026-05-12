@@ -92,12 +92,74 @@ jobs:
         working-directory: ${{ matrix.project.name }}
         run: pyinstaller --onefile --console -n ${{ matrix.project.name }} ${{ matrix.project.entry }}
 
+      - name: 列出构建产物
+        working-directory: ${{ matrix.project.name }}
+        run: |
+          echo "=== dist/ 目录内容 ==="
+          ls -la dist/ || echo "dist/ 目录不存在"
+          echo ""
+          echo "=== 递归查找 .exe .app 可执行文件 ==="
+          find dist/ -name "*.exe" -o -name "*.app" -o -type f -perm -u+x 2>/dev/null || true
+
+      - name: 打包Windows ZIP
+        if: runner.os == 'Windows'
+        working-directory: ${{ matrix.project.name }}
+        shell: pwsh
+        run: |
+          $distPath = "dist"
+          $projectName = "${{ matrix.project.name }}"
+          $zipName = "${projectName}-Windows.zip"
+
+          if (Test-Path "$distPath\$projectName.exe") {
+            Compress-Archive -Path "$distPath\$projectName.exe" -DestinationPath $zipName
+          } elseif (Test-Path "$distPath\$projectName") {
+            Compress-Archive -Path "$distPath\$projectName" -DestinationPath $zipName
+          } else {
+            Get-ChildItem $distPath -Directory | ForEach-Object {
+              Compress-Archive -Path $_.FullName -DestinationPath $zipName -Update
+            }
+            Get-ChildItem $distPath -File -Filter "*.exe" | ForEach-Object {
+              Compress-Archive -Path $_.FullName -DestinationPath $zipName -Update
+            }
+            if (-not (Test-Path $zipName)) {
+              Compress-Archive -Path "$distPath\*" -DestinationPath $zipName
+            }
+          }
+          Write-Host "已生成: $zipName"
+          Get-ChildItem $zipName
+
+      - name: 打包macOS ZIP
+        if: runner.os == 'macOS'
+        working-directory: ${{ matrix.project.name }}
+        run: |
+          project_name="${{ matrix.project.name }}"
+          zip_name="${project_name}-macOS.zip"
+          cd dist/
+          app_files=$(find . -name "*.app" -maxdepth 1 -type d 2>/dev/null)
+          exe_files=$(find . -type f -perm -u+x -not -path "*.app/*" -maxdepth 2 2>/dev/null)
+          if [ -n "$app_files" ]; then
+            for app in $app_files; do
+              zip -r "../${zip_name}" "$app"
+            done
+          fi
+          if [ -n "$exe_files" ]; then
+            for exe in $exe_files; do
+              zip -j "../${zip_name}" "$exe"
+            done
+          fi
+          if [ -z "$app_files" ] && [ -z "$exe_files" ]; then
+            zip -r "../${zip_name}" .
+          fi
+          cd ..
+          echo "已生成: ${zip_name}"
+          ls -la "${zip_name}"
+
       - name: 上传构建产物 (Windows)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.project.name }}-windows
-          path: ${{ matrix.project.name }}/dist/*
+          path: ${{ matrix.project.name }}/${{ matrix.project.name }}-Windows.zip
           retention-days: 30
 
       - name: 上传构建产物 (macOS)
@@ -105,7 +167,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.project.name }}-macos
-          path: ${{ matrix.project.name }}/dist/*
+          path: ${{ matrix.project.name }}/${{ matrix.project.name }}-macOS.zip
           retention-days: 30
 
   release:
@@ -137,6 +199,7 @@ jobs:
             - **bulk_creator** - Amazon BULK批量生成工具
 
             ## 下载说明
-            选择对应平台和工具的压缩包下载即可使用。
+            - **Windows用户**: 下载 `*-Windows.zip`，解压后运行 .exe
+            - **macOS用户**: 下载 `*-macOS.zip`，解压后使用 .app 或可执行文件
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
