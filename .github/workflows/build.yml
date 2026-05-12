@@ -94,12 +94,11 @@ jobs:
 
       - name: 列出构建产物
         working-directory: ${{ matrix.project.name }}
+        shell: bash
+        continue-on-error: true
         run: |
           echo "=== dist/ 目录内容 ==="
-          ls -la dist/ || echo "dist/ 目录不存在"
-          echo ""
-          echo "=== 递归查找 .exe .app 可执行文件 ==="
-          find dist/ -name "*.exe" -o -name "*.app" -o -type f -perm -u+x 2>/dev/null || true
+          ls -laR dist/ 2>/dev/null || dir /s /b dist\ 2>/dev/null || echo "dist/ 目录不存在"
 
       - name: 打包Windows ZIP
         if: runner.os == 'Windows'
@@ -110,18 +109,21 @@ jobs:
           $projectName = "${{ matrix.project.name }}"
           $zipName = "${projectName}-Windows.zip"
 
-          if (Test-Path "$distPath\$projectName.exe") {
-            Compress-Archive -Path "$distPath\$projectName.exe" -DestinationPath $zipName
-          } elseif (Test-Path "$distPath\$projectName") {
-            Compress-Archive -Path "$distPath\$projectName" -DestinationPath $zipName
+          Write-Host "=== dist/ 内容 ==="
+          Get-ChildItem -Path $distPath -Recurse | Select-Object FullName
+
+          $exeFile = Get-ChildItem -Path $distPath -Filter "*.exe" -Recurse | Select-Object -First 1
+          if ($exeFile) {
+            Write-Host "找到EXE: $($exeFile.FullName)"
+            $parentDir = $exeFile.DirectoryName
+            Compress-Archive -Path "$parentDir\*" -DestinationPath $zipName
           } else {
-            Get-ChildItem $distPath -Directory | ForEach-Object {
-              Compress-Archive -Path $_.FullName -DestinationPath $zipName -Update
-            }
-            Get-ChildItem $distPath -File -Filter "*.exe" | ForEach-Object {
-              Compress-Archive -Path $_.FullName -DestinationPath $zipName -Update
-            }
-            if (-not (Test-Path $zipName)) {
+            $subDir = Get-ChildItem -Path $distPath -Directory | Select-Object -First 1
+            if ($subDir) {
+              Write-Host "找到子目录: $($subDir.FullName)"
+              Compress-Archive -Path "$($subDir.FullName)\*" -DestinationPath $zipName
+            } else {
+              Write-Host "压缩整个dist目录"
               Compress-Archive -Path "$distPath\*" -DestinationPath $zipName
             }
           }
@@ -131,25 +133,36 @@ jobs:
       - name: 打包macOS ZIP
         if: runner.os == 'macOS'
         working-directory: ${{ matrix.project.name }}
+        shell: bash
         run: |
           project_name="${{ matrix.project.name }}"
           zip_name="${project_name}-macOS.zip"
           cd dist/
-          app_files=$(find . -name "*.app" -maxdepth 1 -type d 2>/dev/null)
-          exe_files=$(find . -type f -perm -u+x -not -path "*.app/*" -maxdepth 2 2>/dev/null)
+
+          echo "=== dist/ 内容 ==="
+          ls -laR
+
+          app_files=$(find . -name "*.app" -maxdepth 2 -type d 2>/dev/null || true)
           if [ -n "$app_files" ]; then
             for app in $app_files; do
+              echo "打包 .app: $app"
               zip -r "../${zip_name}" "$app"
             done
           fi
+
+          exe_files=$(find . -type f -perm -u+x -not -path "*.app/*" -maxdepth 3 2>/dev/null || true)
           if [ -n "$exe_files" ]; then
             for exe in $exe_files; do
+              echo "打包可执行文件: $exe"
               zip -j "../${zip_name}" "$exe"
             done
           fi
+
           if [ -z "$app_files" ] && [ -z "$exe_files" ]; then
+            echo "未找到 .app 或可执行文件，压缩整个dist目录"
             zip -r "../${zip_name}" .
           fi
+
           cd ..
           echo "已生成: ${zip_name}"
           ls -la "${zip_name}"
