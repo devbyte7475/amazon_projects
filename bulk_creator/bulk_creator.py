@@ -23,6 +23,7 @@ COLOR_MAP = {
     "sp_product": "#3498DB",
     "sp_auto": "#2ECC71",
     "sbkw": "#9B59B6",
+    "sp_kw": "#1ABC9C",
     "neg_keyword": "#E74C3C",
 }
 
@@ -237,6 +238,7 @@ class AmazonAdBulkGenerator:
         self.tab_sp_product = self.notebook.add("📦 SP 商品")
         self.tab_sp_auto = self.notebook.add("🤖 SP 自动")
         self.tab_sbkw = self.notebook.add("🔑 SB_KW")
+        self.tab_sp_kw = self.notebook.add("🎯 SP_KW")
         self.tab_neg_keyword = self.notebook.add("🚫 否定词根")
 
     def _create_scrollable_tab(self, tab_widget):
@@ -252,6 +254,7 @@ class AmazonAdBulkGenerator:
         self._init_sp_product_tab()
         self._init_sp_auto_tab()
         self._init_sbkw_tab()
+        self._init_sp_kw_tab()
         self._init_neg_keyword_tab()
 
     # ===================== SBV视频广告页面 =====================
@@ -473,6 +476,74 @@ class AmazonAdBulkGenerator:
 
         self._build_action_bar(content, "sbkw")
 
+    # ===================== SP_KW 关键词投放页面 =====================
+    def _init_sp_kw_tab(self):
+        self.sp_kw_config = {
+            "campaign_name": ctk.StringVar(value="商品名称_SP_手动_关键词_日期"),
+            "daily_budget": ctk.StringVar(value="5"),
+            "start_date": ctk.StringVar(value=datetime.today().strftime("%Y%m%d")),
+            "bidding_strategy": ctk.StringVar(value="Fixed bid"),
+            "campaign_loop_count": ctk.StringVar(value="2"),
+            "ad_group_per_campaign": ctk.StringVar(value="3"),
+            "sku_list": ctk.StringVar(value="SKU1\nSKU2"),
+            "ad_group_default_bid": ctk.StringVar(value="0.75"),
+            "keyword_text": ctk.StringVar(value="backless top\nbackless shirt\nbackless crop top\nopen back tops for women"),
+            "match_type": ctk.StringVar(value="broad"),
+            "bid_amount": ctk.StringVar(value="0.48"),
+            "placement_top": ctk.StringVar(value="20"),
+            "placement_product_page": ctk.StringVar(value="0"),
+            "placement_rest_of_search": ctk.StringVar(value="0"),
+            "placement_amazon_business": ctk.StringVar(value="0"),
+            "output_file": ctk.StringVar(value=f"sp_bulk_关键词_{datetime.today().strftime('%Y%m%d')}.csv")
+        }
+
+        content = self._create_scrollable_tab(self.tab_sp_kw)
+
+        ctk.CTkLabel(content, text="SP_KW 关键词投放批量生成",
+                      font=FONT_HIERARCHY["H2"], text_color=COLOR_MAP["sp_kw"]
+                      ).pack(pady=(10, 15))
+
+        info_frame = ctk.CTkFrame(content, fg_color="#1B3A2D", corner_radius=8)
+        info_frame.pack(fill="x", pady=(0, 10), padx=4)
+        ctk.CTkLabel(info_frame, text="🎯 SP手动关键词投放：为每个广告组生成关键词投放行，支持Broad/Exact/Phrase匹配",
+                      font=FONT_HIERARCHY["Caption"], text_color="#1ABC9C").pack(padx=12, pady=8)
+
+        SimplePanel(content, "Campaign循环配置", [
+            ("Campaign循环数量:", "campaign_loop_count", "生成的Campaign总数"),
+            ("每Campaign广告组数:", "ad_group_per_campaign", "每个Campaign下的广告组数量"),
+        ], config=self.sp_kw_config, accent_color=COLOR_MAP["sp_kw"]).pack(fill="x", pady=4)
+
+        SimplePanel(content, "基本配置", [
+            ("活动名称:", "campaign_name", "输入SP关键词广告活动名称"),
+            ("每日预算:", "daily_budget", "单位: 美元"),
+            ("投放日期:", "start_date", "格式: YYYYMMDD"),
+            ("竞价策略:", "bidding_strategy", "Fixed bid / Dynamic bids down / Dynamic bids up and down"),
+        ], config=self.sp_kw_config, accent_color=COLOR_MAP["sp_kw"]).pack(fill="x", pady=4)
+
+        SimplePanel(content, "SKU配置", [
+            ("广告SKU:", "sku_list", "每行一个，不能重复"),
+        ], config=self.sp_kw_config, accent_color=COLOR_MAP["sp_kw"]).pack(fill="x", pady=4)
+
+        SimplePanel(content, "关键词配置", [
+            ("关键词:", "keyword_text", "每行一个关键词"),
+            ("匹配类型:", "match_type", "broad / exact / phrase"),
+            ("关键词出价:", "bid_amount", "每个关键词的出价，单位: 美元"),
+            ("广告组默认出价:", "ad_group_default_bid", "广告组默认出价，单位: 美元"),
+        ], config=self.sp_kw_config, accent_color=COLOR_MAP["sp_kw"]).pack(fill="x", pady=4)
+
+        SimplePanel(content, "竞价调整（Placement）", [
+            ("Placement Top:", "placement_top", "首页顶部位置竞价调整百分比"),
+            ("Placement Product Page:", "placement_product_page", "产品页面位置竞价调整百分比"),
+            ("Placement Rest Of Search:", "placement_rest_of_search", "其余搜索位置竞价调整百分比"),
+            ("Placement Amazon Business:", "placement_amazon_business", "Amazon Business位置竞价调整百分比"),
+        ], config=self.sp_kw_config, accent_color="#E67E22").pack(fill="x", pady=4)
+
+        SimplePanel(content, "输出配置", [
+            ("输出文件名:", "output_file", "生成的CSV文件名"),
+        ], config=self.sp_kw_config, accent_color="#555555").pack(fill="x", pady=4)
+
+        self._build_action_bar(content, "sp_kw")
+
     # ===================== 否定词根标签页 =====================
     def _init_neg_keyword_tab(self):
         self.neg_keyword_config = {
@@ -532,6 +603,7 @@ class AmazonAdBulkGenerator:
             "sp_product": self.generate_sp_product_csv,
             "sp_auto": self.generate_sp_auto_csv,
             "sbkw": self.generate_sbkw_csv,
+            "sp_kw": self.generate_sp_kw_csv,
             "neg_keyword": self.generate_neg_keyword_csv,
         }[tab_key]
 
@@ -540,6 +612,7 @@ class AmazonAdBulkGenerator:
             "sp_product": self.reset_sp_product_config,
             "sp_auto": self.reset_sp_auto_config,
             "sbkw": self.reset_sbkw_config,
+            "sp_kw": self.reset_sp_kw_config,
             "neg_keyword": self.reset_neg_keyword_config,
         }[tab_key]
 
@@ -548,6 +621,7 @@ class AmazonAdBulkGenerator:
             "sp_product": "sp_product_config",
             "sp_auto": "sp_auto_config",
             "sbkw": "sbkw_config",
+            "sp_kw": "sp_kw_config",
             "neg_keyword": "neg_keyword_config",
         }[tab_key]
 
@@ -616,6 +690,13 @@ class AmazonAdBulkGenerator:
                 widget.destroy()
             self._init_sbkw_tab()
             self.sbkw_status.set_status("配置已重置为默认值", "idle")
+
+    def reset_sp_kw_config(self):
+        if messagebox.askyesno("确认", "是否重置SP_KW所有配置为默认值?"):
+            for widget in self.tab_sp_kw.winfo_children():
+                widget.destroy()
+            self._init_sp_kw_tab()
+            self.sp_kw_status.set_status("配置已重置为默认值", "idle")
 
     def reset_neg_keyword_config(self):
         if messagebox.askyesno("确认", "是否重置否定词根所有配置为默认值?"):
@@ -919,6 +1000,114 @@ class AmazonAdBulkGenerator:
             messagebox.showerror("配置错误", f"配置转换出错: {str(e)}")
             return None
 
+    # ===================== SP_KW：获取并验证配置 =====================
+    def get_sp_kw_config(self):
+        try:
+            errors = []
+            if not self.sp_kw_config["campaign_name"].get().strip():
+                errors.append("活动名称不能为空")
+
+            try:
+                daily_budget = float(self.sp_kw_config["daily_budget"].get())
+                if daily_budget <= 0: errors.append("每日预算必须大于0")
+            except ValueError:
+                errors.append("每日预算必须是数字")
+
+            start_date = self.sp_kw_config["start_date"].get()
+            if not start_date.isdigit() or len(start_date) != 8:
+                errors.append("投放日期格式错误，应为YYYYMMDD")
+
+            try:
+                campaign_loop_count = int(self.sp_kw_config["campaign_loop_count"].get())
+                if campaign_loop_count <= 0: errors.append("Campaign循环数量必须大于0")
+            except ValueError:
+                errors.append("Campaign循环数量必须是整数")
+
+            try:
+                ad_group_per_campaign = int(self.sp_kw_config["ad_group_per_campaign"].get())
+                if ad_group_per_campaign <= 0: errors.append("每Campaign广告组数必须大于0")
+            except ValueError:
+                errors.append("每Campaign广告组数必须是整数")
+
+            skus_list = [s.strip() for s in self.sp_kw_config["sku_list"].get().strip().split("\n") if s.strip()]
+            if not skus_list:
+                errors.append("请至少输入一个SKU")
+            elif len(skus_list) != len(set(skus_list)):
+                errors.append("SKU列表中存在重复项")
+
+            try:
+                ad_group_default_bid = float(self.sp_kw_config["ad_group_default_bid"].get())
+                if ad_group_default_bid <= 0: errors.append("广告组默认出价必须大于0")
+            except ValueError:
+                errors.append("广告组默认出价必须是数字")
+
+            keyword_lines = [s.strip() for s in self.sp_kw_config["keyword_text"].get().strip().split("\n") if s.strip()]
+            if not keyword_lines:
+                errors.append("请至少输入一个关键词")
+
+            match_type = self.sp_kw_config["match_type"].get()
+            if match_type not in ["broad", "exact", "phrase"]:
+                errors.append("匹配类型必须为broad/exact/phrase")
+
+            try:
+                bid_amount = float(self.sp_kw_config["bid_amount"].get())
+                if bid_amount <= 0: errors.append("关键词出价必须大于0")
+            except ValueError:
+                errors.append("关键词出价必须是数字")
+
+            try:
+                placement_top = int(self.sp_kw_config["placement_top"].get())
+                if placement_top < 0 or placement_top > 900: errors.append("Placement Top百分比应在0-900之间")
+            except ValueError:
+                errors.append("Placement Top必须是整数")
+
+            try:
+                placement_product_page = int(self.sp_kw_config["placement_product_page"].get())
+                if placement_product_page < 0 or placement_product_page > 900: errors.append("Placement Product Page百分比应在0-900之间")
+            except ValueError:
+                errors.append("Placement Product Page必须是整数")
+
+            try:
+                placement_rest_of_search = int(self.sp_kw_config["placement_rest_of_search"].get())
+                if placement_rest_of_search < 0 or placement_rest_of_search > 900: errors.append("Placement Rest Of Search百分比应在0-900之间")
+            except ValueError:
+                errors.append("Placement Rest Of Search必须是整数")
+
+            try:
+                placement_amazon_business = int(self.sp_kw_config["placement_amazon_business"].get())
+                if placement_amazon_business < 0 or placement_amazon_business > 900: errors.append("Placement Amazon Business百分比应在0-900之间")
+            except ValueError:
+                errors.append("Placement Amazon Business必须是整数")
+
+            output_file = self.sp_kw_config["output_file"].get()
+            if not output_file: errors.append("输出文件名不能为空")
+
+            if errors:
+                messagebox.showerror("输入错误", "\n".join(errors))
+                return None
+
+            return {
+                "campaign_name": self.sp_kw_config["campaign_name"].get(),
+                "daily_budget": daily_budget,
+                "start_date": start_date,
+                "bidding_strategy": self.sp_kw_config["bidding_strategy"].get(),
+                "campaign_loop_count": campaign_loop_count,
+                "ad_group_per_campaign": ad_group_per_campaign,
+                "sku_list": skus_list,
+                "ad_group_default_bid": ad_group_default_bid,
+                "keyword_text_list": keyword_lines,
+                "match_type": match_type.capitalize(),
+                "bid_amount": bid_amount,
+                "placement_top": placement_top,
+                "placement_product_page": placement_product_page,
+                "placement_rest_of_search": placement_rest_of_search,
+                "placement_amazon_business": placement_amazon_business,
+                "output_file": output_file
+            }
+        except Exception as e:
+            messagebox.showerror("配置错误", f"配置转换出错: {str(e)}")
+            return None
+
     # ===================== 否定词根：获取并验证配置 =====================
     def get_neg_keyword_config(self):
         try:
@@ -1022,6 +1211,20 @@ class AmazonAdBulkGenerator:
             messagebox.showinfo("成功", f"SB_KW文件已生成:\n{output_path}")
         except Exception as e:
             self.sbkw_status.set_status(f"❌ 错误: {str(e)}", "error")
+            messagebox.showerror("错误", str(e))
+
+    def generate_sp_kw_csv(self):
+        try:
+            config = self.get_sp_kw_config()
+            if not config: return
+            start_time = time.time()
+            output_file, df, total_ad_groups, total_product_ads, total_keyword_rows = self.generate_sp_kw_bulk_table(config)
+            elapsed = time.time() - start_time
+            self.sp_kw_status.set_status(
+                f"✅ 生成成功! 文件: {output_file} | 记录数: {len(df)} | 关键词行数: {total_keyword_rows} | 耗时: {elapsed:.2f}秒", "success")
+            messagebox.showinfo("成功", f"SP_KW文件已生成:\n{output_file}")
+        except Exception as e:
+            self.sp_kw_status.set_status(f"❌ 错误: {str(e)}", "error")
             messagebox.showerror("错误", str(e))
 
     def generate_neg_keyword_csv(self):
@@ -1272,6 +1475,55 @@ class AmazonAdBulkGenerator:
         df = pd.DataFrame(rows, columns=header)
         df.to_csv(config["output_file"], index=False, encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
         return config["output_file"], df, total_ad_groups, total_product_ads, total_pt_rows
+
+    # ===================== SP_KW：关键词投放核心生成逻辑 =====================
+    def generate_sp_kw_bulk_table(self, config):
+        rows = []
+        header = ["Product", "Entity", "Operation", "Campaign ID", "Ad Group ID",
+                   "Portfolio ID", "Ad ID", "Keyword ID", "Product Targeting ID",
+                   "Campaign Name", "Ad Group Name", "Start Date", "End Date",
+                   "Targeting Type", "State", "Daily Budget", "SKU",
+                   "Ad Group Default Bid", "Bid", "Keyword Text",
+                   "Native Language Keyword", "Native Language Locale", "Match Type",
+                   "Bidding Strategy", "Placement", "Percentage", "Product Targeting Expression"]
+
+        total_ad_groups = 0
+        total_product_ads = 0
+        total_keyword_rows = 0
+
+        for campaign_idx in range(config["campaign_loop_count"]):
+            campaign_id = f"{config['campaign_name']}_{campaign_idx + 1}"
+            campaign_name = campaign_id
+
+            rows.append(["Sponsored Products", "Campaign", "", campaign_id, "", "", "", "", "", campaign_name,
+                          "", config["start_date"], "", "Manual", "enabled", config["daily_budget"], "", "", "", "", "", "", "", config["bidding_strategy"], "", "", ""])
+
+            for placement, percentage in zip(
+                ["Placement Top", "Placement Product Page", "Placement Rest Of Search", "Placement Amazon Business"],
+                [config["placement_top"], config["placement_product_page"], config["placement_rest_of_search"], config["placement_amazon_business"]]
+            ):
+                rows.append(["Sponsored Products", "Bidding Adjustment", "", campaign_id, "", "", "", "", "", "",
+                              "", "", "", "", "", "", "", "", "", "", "", "", "", config["bidding_strategy"], placement, percentage, ""])
+
+            for ad_group_idx in range(config["ad_group_per_campaign"]):
+                ad_group_id = f"{campaign_id}-{ad_group_idx + 1}"
+                rows.append(["Sponsored Products", "Ad Group", "", campaign_id, ad_group_id, "", "", "", "", "",
+                              ad_group_id, "", "", "", "enabled", "", "", config["ad_group_default_bid"], "", "", "", "", "", "", "", "", ""])
+                total_ad_groups += 1
+
+                for sku in config["sku_list"]:
+                    rows.append(["Sponsored Products", "Product Ad", "", campaign_id, ad_group_id, "", "", "", "", "",
+                                  "", "", "", "", "enabled", "", sku, "", "", "", "", "", "", "", "", "", ""])
+                    total_product_ads += 1
+
+                for keyword_text in config["keyword_text_list"]:
+                    rows.append(["Sponsored Products", "Keyword", "", campaign_id, ad_group_id, "", "", "", "", "",
+                                  "", "", "", "", "enabled", "", "", "", config["bid_amount"], keyword_text, "", "", config["match_type"], "", "", "", ""])
+                    total_keyword_rows += 1
+
+        df = pd.DataFrame(rows, columns=header)
+        df.to_csv(config["output_file"], index=False, encoding='utf-8-sig', quoting=csv.QUOTE_ALL)
+        return config["output_file"], df, total_ad_groups, total_product_ads, total_keyword_rows
 
     # ===================== SB_KW：多Campaign生成核心逻辑 =====================
     def _create_sbkw_multi_campaign_dataframe(self, config):

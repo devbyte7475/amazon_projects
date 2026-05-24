@@ -9,6 +9,7 @@ import sys
 import json
 import glob
 import logging
+import argparse
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -571,23 +572,50 @@ class PaymentProcessor:
         }
     
     def setup_logging(self):
-        """配置日志系统"""
-        log_dir = Path.home() / 'amazon_payment_logs'
-        log_dir.mkdir(exist_ok=True)
+        """配置日志系统（健壮版：支持多次调用、自动降级目录）"""
+        self.logger = logging.getLogger(f'payment_{id(self)}')
+        self.logger.setLevel(logging.INFO)
         
+        if self.logger.handlers:
+            return
+        
+        log_dir = self._get_writable_log_dir()
         log_file = log_dir / f'payment_processing_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
         
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file, encoding='utf-8'),
-                logging.StreamHandler(sys.stdout)
-            ]
-        )
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         
-        self.logger = logging.getLogger(__name__)
-        self.logger.info(f"日志文件：{log_file}")
+        try:
+            file_handler = logging.FileHandler(log_file, encoding='utf-8')
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
+            self.logger.info(f"日志文件：{log_file}")
+        except (PermissionError, OSError) as e:
+            print(f"⚠️ 无法创建日志文件 {log_file}: {e}，将仅使用控制台输出")
+        
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(formatter)
+        self.logger.addHandler(console_handler)
+    
+    def _get_writable_log_dir(self):
+        """获取可写的日志目录（按优先级尝试多个位置）"""
+        candidates = [
+            Path(__file__).parent / 'logs',
+            Path.cwd() / 'amazon_payment_logs',
+            Path.home() / 'amazon_payment_logs',
+            Path('/tmp') / 'amazon_payment_logs',
+        ]
+        
+        for dir_path in candidates:
+            try:
+                dir_path.mkdir(parents=True, exist_ok=True)
+                test_file = dir_path / '.write_test'
+                test_file.write_text('test')
+                test_file.unlink()
+                return dir_path
+            except (PermissionError, OSError):
+                continue
+        
+        return Path('/tmp')
     
     def print_banner(self):
         """打印欢迎横幅"""
@@ -599,13 +627,34 @@ class PaymentProcessor:
         """
         print(banner)
     
-    def get_folder_path(self):
+    def get_folder_path(self, cli_path=None):
         """
-        获取文件夹路径（支持拖放和手动输入）
+        获取文件夹路径（支持命令行参数、拖放和手动输入）
+        
+        参数:
+            cli_path: 命令行传入的路径（可选）
         
         返回:
             Path: 验证后的文件夹路径
         """
+        if cli_path:
+            path = Path(cli_path.strip('"\'').strip())
+            if not path.exists():
+                print(f"❌ 错误：路径不存在: {path}")
+                self.logger.error(f"路径不存在: {path}")
+                return None
+            if not path.is_dir():
+                print(f"❌ 错误：路径不是文件夹: {path}")
+                self.logger.error(f"路径不是文件夹: {path}")
+                return None
+            return path
+        
+        if not sys.stdin.isatty():
+            print("❌ 非交互模式下未提供数据文件夹路径")
+            print("💡 用法: python payment.py /path/to/data/folder")
+            self.logger.error("非交互模式下未提供路径参数")
+            return None
+        
         print("\n📁 请选择数据文件夹：")
         print("   方法1：直接将文件夹拖放到此终端窗口")
         print("   方法2：手动输入文件夹完整路径")
@@ -1032,11 +1081,15 @@ class PaymentProcessor:
                 for err in validation['all_errors']:
                     print(f"  {err}")
                 
-                proceed = input("\n是否继续处理？(y/n): ").strip().lower()
-                if proceed != 'y':
-                    print("❌ 用户中止处理")
-                    self.logger.warning("用户因数据验证错误中止处理")
-                    return df
+                if sys.stdin.isatty():
+                    proceed = input("\n是否继续处理？(y/n): ").strip().lower()
+                    if proceed != 'y':
+                        print("❌ 用户中止处理")
+                        self.logger.warning("用户因数据验证错误中止处理")
+                        return df
+                else:
+                    print("⚠️ 非交互模式，自动跳过错误继续处理")
+                    self.logger.warning("非交互模式下遇到数据验证错误，自动继续处理")
             
             if validation['all_warnings']:
                 print("\n⚠️ 检测到数据变更警告：")
@@ -1061,7 +1114,7 @@ class PaymentProcessor:
             df['折扣金额'] = ifs(df, (df['type'] == 'Order') | (df['type'] == 'Refund'), df[cols['promotional rebates']], default=0)
             df['佣金'] = ifs(df, (df['type'] == 'Order') | (df['type'] == 'Refund'), df[cols['selling fees']], default=0)
             df['fba运费'] = ifs(df, df['type'] == 'Order', df[cols['fba fees']], default=0)
-            df['退货处理费'] = ifs(df, df['type'] == cols['FBA Customer Return Fee'], df[cols['total']], default=0)
+            df['退货处理费'] = ifs(df, df['description'] == cols['FBA Customer Return Fee'], df[cols['total']], default=0)
             df['优惠券/秒杀'] = ifs(df, df['type'] == '优惠券/秒杀', df[cols['total']], default=0)
             df['广告费'] = ifs(df, df['description'] == cols['Cost of Advertising'], df[cols['total']], default=0)
             df['仓储费'] = ifs(df, (df['description'] == cols['fba storage fee']) | (df['description'] == cols['fba long term storage']), df[cols['total']], default=0)
@@ -1158,20 +1211,22 @@ class PaymentProcessor:
         
         print("=" * 80)
     
-    def run(self):
+    def run(self, folder_path=None):
         """主处理流程"""
         try:
             self.print_banner()
             
-            folder_path = self.get_folder_path()
+            folder = self.get_folder_path(cli_path=folder_path)
+            if folder is None:
+                return False
             
-            is_valid, files, error_msg = self.validate_data_folder(folder_path)
+            is_valid, files, error_msg = self.validate_data_folder(folder)
             if not is_valid:
                 print(f"\n❌ {error_msg}")
                 print("请确保文件夹包含 .xlsx, .xls 或 .csv 文件")
                 return False
             
-            df = self.datamerge(folder_path, skip_csv=7, skip_excel=7)
+            df = self.datamerge(folder, skip_csv=7, skip_excel=7)
             
             if df.empty:
                 print("\n❌ 没有读取到任何数据，请检查文件格式")
@@ -1187,7 +1242,7 @@ class PaymentProcessor:
             
             df = self.create_metric_columns(df)
             
-            output_folder = folder_path / 'processed_results'
+            output_folder = folder / 'processed_results'
             原表路径 = self.export_results(df, output_folder)
             
             snapshot_dir = output_folder / 'schema_snapshots'
@@ -1215,18 +1270,42 @@ class PaymentProcessor:
 
 def main():
     """主入口函数"""
+    parser = argparse.ArgumentParser(
+        description='Amazon Payment 数据处理工具 v3.0',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+使用示例:
+  python payment.py /path/to/data/folder
+  python payment.py --skip-csv 5 --skip-excel 3 /path/to/data/folder
+  python payment.py  # 交互模式，手动输入路径
+        '''
+    )
+    parser.add_argument('folder', nargs='?', default=None,
+                        help='数据文件夹路径（不提供则进入交互模式）')
+    parser.add_argument('--skip-csv', type=int, default=7,
+                        help='CSV文件跳过行数（默认7）')
+    parser.add_argument('--skip-excel', type=int, default=7,
+                        help='Excel文件跳过行数（默认7）')
+    
+    args = parser.parse_args()
+    
     try:
         processor = PaymentProcessor()
-        success = processor.run()
+        success = processor.run(folder_path=args.folder)
         
-        print("\n" + "=" * 80)
-        input("按回车键退出...")
+        if sys.stdin.isatty():
+            print("\n" + "=" * 80)
+            input("按回车键退出...")
+        
         sys.exit(0 if success else 1)
         
     except Exception as e:
         print(f"\n❌ 程序异常: {e}")
         logging.error(f"程序异常: {e}\n{traceback.format_exc()}")
-        input("\n按回车键退出...")
+        
+        if sys.stdin.isatty():
+            input("\n按回车键退出...")
+        
         sys.exit(1)
 
 
